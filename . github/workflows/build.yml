@@ -1,0 +1,48 @@
+name: Build APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      filename:
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.22.0"
+
+      - name: Extract ZIP
+        run: |
+          mkdir project
+          unzip uploads/${{ github.event.inputs.filename }} -d project
+
+      - name: Build APK
+        run: |
+          cd project
+          flutter pub get
+          flutter clean
+          flutter build apk --release
+
+      - name: Move APK
+        run: |
+          mkdir -p builds
+          cp project/build/app/outputs/flutter-apk/app-release.apk builds/app-release.apk
+
+      - name: 🚀 Commit & Push APK
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "actions@github.com"
+          git add builds/app-release.apk
+          git commit -m "Auto build APK $(date +'%Y-%m-%d %H:%M:%S')" || echo "No changes"
+          git push
