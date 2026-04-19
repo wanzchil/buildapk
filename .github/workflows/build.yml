@@ -13,20 +13,42 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      # ===== CHECKOUT =====
+      - uses: actions/checkout@v4
 
-      # ===== DOWNLOAD ZIP =====
+      # ===== INSTALL TOOLS =====
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y unzip curl
+
+      # ===== DOWNLOAD ZIP (FIX RAW) =====
       - name: Download ZIP
         run: |
           mkdir project
-          curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-          -L https://api.github.com/repos/${{ github.repository }}/contents/${{ github.event.inputs.zip_path }} \
-          | jq -r .content | base64 -d > project/app.zip
+          curl -L \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          -H "Accept: application/vnd.github.raw" \
+          https://api.github.com/repos/${{ github.repository }}/contents/${{ github.event.inputs.zip_path }} \
+          -o project/app.zip
 
-      - name: Unzip
-        run: unzip project/app.zip -d project
+      # ===== DEBUG FILE =====
+      - name: Check ZIP
+        run: |
+          ls -lh project
+          file project/app.zip
 
-      # ===== SETUP JAVA (WAJIB BUAT ANDROID) =====
+      # ===== UNZIP =====
+      - name: Unzip project
+        run: |
+          unzip project/app.zip -d project || (echo "ZIP ERROR" && exit 1)
+
+      # ===== LIAT STRUKTUR =====
+      - name: Check project structure
+        run: |
+          ls -R project
+
+      # ===== SETUP JAVA =====
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
