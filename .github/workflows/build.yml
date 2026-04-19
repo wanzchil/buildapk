@@ -1,0 +1,57 @@
+name: Build APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      zip_path:
+        required: true
+      job_id:
+        required: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y unzip curl jq
+
+      - name: Download ZIP dari repo
+        run: |
+          mkdir project
+          curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          -L https://api.github.com/repos/${{ github.repository }}/contents/${{ github.event.inputs.zip_path }} \
+          | jq -r .content | base64 -d > project/app.zip
+
+      - name: Unzip project
+        run: unzip project/app.zip -d project
+
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.22.0"
+
+      - name: Build APK
+        run: |
+          cd project
+          flutter pub get
+          flutter build apk --release
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-${{ github.event.inputs.job_id }}
+          path: project/build/app/outputs/flutter-apk/app-release.apk
