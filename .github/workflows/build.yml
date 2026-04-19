@@ -13,48 +13,92 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      # ===== CHECKOUT =====
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
+      # ===== INSTALL TOOLS =====
       - name: Install tools
         run: |
           sudo apt update
           sudo apt install -y unzip curl
 
+      # ===== DOWNLOAD ZIP (FIX PAKAI API GITHUB) =====
       - name: Download ZIP
         run: |
           mkdir -p project
+
           FILE="${{ github.event.inputs.zip_path }}"
-          URL="https://raw.githubusercontent.com/${{ github.repository }}/main/${FILE}"
-          curl -L "$URL" -o project/app.zip
+          echo "Downloading: $FILE"
 
+          curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+               -H "Accept: application/vnd.github.v3.raw" \
+               -L https://api.github.com/repos/${{ github.repository }}/contents/${FILE} \
+               -o project/app.zip
+
+          echo "=== FILE TYPE ==="
+          file project/app.zip
+
+      # ===== EXTRACT ZIP =====
       - name: Extract ZIP
-        run: unzip project/app.zip -d project
+        run: |
+          unzip project/app.zip -d project || (echo "ZIP ERROR" && exit 1)
 
+      # ===== AUTO MASUK KE FOLDER DALAM (ANTI ERROR STRUKTUR) =====
+      - name: Prepare Project
+        run: |
+          cd project
+
+          # kalau ada 1 folder di dalam, masuk ke situ
+          COUNT=$(ls -d */ 2>/dev/null | wc -l)
+          if [ "$COUNT" -eq 1 ]; then
+            cd $(ls -d */ | head -n 1)
+          fi
+
+          echo "PROJECT DIR:"
+          pwd
+
+          ls
+
+      # ===== JAVA =====
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: "temurin"
           java-version: "17"
 
+      # ===== ANDROID SDK =====
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      # ===== FLUTTER =====
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: "stable"
+          cache: true
 
+      # ===== ACCEPT LICENSE =====
       - name: Accept Licenses
         run: yes | sdkmanager --licenses
 
+      # ===== BUILD APK =====
       - name: Build APK
         run: |
           cd project
+
+          # masuk folder dalam kalau ada
+          COUNT=$(ls -d */ 2>/dev/null | wc -l)
+          if [ "$COUNT" -eq 1 ]; then
+            cd $(ls -d */ | head -n 1)
+          fi
+
           flutter pub get
           flutter build apk --release
 
+      # ===== UPLOAD APK =====
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: apk-${{ github.event.inputs.job_id }}
-          path: project/build/app/outputs/flutter-apk/app-release.apk
+          path: project/**/build/app/outputs/flutter-apk/app-release.apk
