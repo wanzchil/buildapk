@@ -14,39 +14,48 @@ jobs:
 
     steps:
       # ===== CHECKOUT =====
-      - uses: actions/checkout@v4
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
-      # ===== INSTALL TOOLS =====
-      - name: Install dependencies
+      # ===== INSTALL DEPENDENCY =====
+      - name: Install tools
         run: |
           sudo apt update
           sudo apt install -y unzip curl
 
-      # ===== DOWNLOAD ZIP (FIX RAW) =====
+      # ===== DOWNLOAD ZIP (FIX TOTAL) =====
       - name: Download ZIP
         run: |
-          mkdir project
-          curl -L \
-          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-          -H "Accept: application/vnd.github.raw" \
-          https://api.github.com/repos/${{ github.repository }}/contents/${{ github.event.inputs.zip_path }} \
-          -o project/app.zip
+          mkdir -p project
 
-      # ===== DEBUG FILE =====
-      - name: Check ZIP
-        run: |
+          URL="https://api.github.com/repos/${{ github.repository }}/contents/${{ github.event.inputs.zip_path }}"
+
+          echo "Downloading from: $URL"
+
+          curl -L \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.raw" \
+            "$URL" \
+            -o project/app.zip
+
+          echo "=== FILE INFO ==="
           ls -lh project
+
+          echo "=== FILE TYPE ==="
           file project/app.zip
 
-      # ===== UNZIP =====
-      - name: Unzip project
+      # ===== VALIDASI ZIP =====
+      - name: Validate ZIP
         run: |
-          unzip project/app.zip -d project || (echo "ZIP ERROR" && exit 1)
+          unzip -t project/app.zip || (echo "ZIP INVALID / CORRUPT" && exit 1)
 
-      # ===== LIAT STRUKTUR =====
+      # ===== UNZIP =====
+      - name: Extract ZIP
+        run: unzip project/app.zip -d project
+
+      # ===== CEK STRUKTUR =====
       - name: Check project structure
-        run: |
-          ls -R project
+        run: ls -R project
 
       # ===== SETUP JAVA =====
       - name: Setup Java
