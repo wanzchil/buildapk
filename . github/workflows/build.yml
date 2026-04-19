@@ -15,6 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      # ===== DOWNLOAD ZIP =====
       - name: Download ZIP
         run: |
           mkdir project
@@ -25,15 +26,36 @@ jobs:
       - name: Unzip
         run: unzip project/app.zip -d project
 
+      # ===== SETUP JAVA (WAJIB BUAT ANDROID) =====
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      # ===== SETUP ANDROID SDK =====
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      # ===== SETUP FLUTTER =====
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "stable"
+          cache: true
 
+      # ===== ACCEPT LICENSE =====
+      - name: Accept Licenses
+        run: yes | sdkmanager --licenses
+
+      # ===== BUILD APK =====
       - name: Build APK
         run: |
           cd project
           flutter pub get
           flutter build apk --release
 
+      # ===== UPLOAD APK =====
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
