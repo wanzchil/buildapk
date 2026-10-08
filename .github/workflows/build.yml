@@ -32,13 +32,13 @@ jobs:
 
     steps:
       # ═══════════════════════════════════════════════════
-      # 1. CHECKOUT REPO
+      # 1. CHECKOUT
       # ═══════════════════════════════════════════════════
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # ═══════════════════════════════════════════════════
-      # 2. NOTIF TELEGRAM — BUILD START
+      # 2. NOTIF TELEGRAM — START
       # ═══════════════════════════════════════════════════
       - name: Notify Telegram (Start)
         if: ${{ github.event.inputs.user_id != '' }}
@@ -46,13 +46,13 @@ jobs:
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
             -d "chat_id=${{ github.event.inputs.user_id }}" \
             -d "text=🚀 Build dimulai untuk *${{ github.event.inputs.app_name }}*" \
-            -d "parse_mode=Markdown"
+            -d "parse_mode=Markdown" || true
 
       # ═══════════════════════════════════════════════════
       # 3. SETUP JAVA 17
       # ═══════════════════════════════════════════════════
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -68,10 +68,35 @@ jobs:
           cache: true
 
       # ═══════════════════════════════════════════════════
-      # 5. SETUP ANDROID SDK
+      # 5. SETUP ANDROID SDK (MANUAL)
       # ═══════════════════════════════════════════════════
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        run: |
+          # Download command line tools terbaru
+          mkdir -p $HOME/android-sdk/cmdline-tools
+          cd $HOME/android-sdk/cmdline-tools
+          
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
+          unzip -q cmdline-tools.zip
+          mv cmdline-tools latest
+          rm cmdline-tools.zip
+          
+          # Set environment
+          echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> $GITHUB_ENV
+          echo "ANDROID_HOME=$HOME/android-sdk" >> $GITHUB_ENV
+          echo "$HOME/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$HOME/android-sdk/platform-tools" >> $GITHUB_PATH
+          
+          # Accept licenses
+          yes | $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1 || true
+          
+          # Install packages
+          $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager \
+            "platform-tools" \
+            "platforms;android-34" \
+            "build-tools;34.0.0" > /dev/null 2>&1 || true
+          
+          echo "✅ Android SDK ready"
 
       # ═══════════════════════════════════════════════════
       # 6. BUILD DARI URL (WEBVIEW APP)
@@ -81,15 +106,12 @@ jobs:
         run: |
           echo "🔨 Building WebView App from URL..."
           
-          # Bikin project Flutter baru
           flutter create --org ${{ github.event.inputs.package_name }} --project-name web2apk_app temp_app
           cd temp_app
           
-          # Install dependency webview_flutter
           flutter pub add webview_flutter
           flutter pub add permission_handler
           
-          # Overwrite main.dart
           cat > lib/main.dart << 'EOF'
           import 'package:flutter/material.dart';
           import 'package:webview_flutter/webview_flutter.dart';
@@ -108,10 +130,7 @@ jobs:
               return MaterialApp(
                 title: '${{ github.event.inputs.app_name }}',
                 debugShowCheckedModeBanner: false,
-                theme: ThemeData(
-                  primarySwatch: Colors.blue,
-                  useMaterial3: true,
-                ),
+                theme: ThemeData(primarySwatch: Colors.blue, useMaterial3: true),
                 home: const WebViewScreen(),
               );
             }
@@ -139,18 +158,9 @@ jobs:
                 ..setBackgroundColor(const Color(0x00000000))
                 ..setNavigationDelegate(
                   NavigationDelegate(
-                    onProgress: (int p) {
-                      setState(() => progress = p);
-                    },
-                    onPageStarted: (String url) {
-                      setState(() => isLoading = true);
-                    },
-                    onPageFinished: (String url) {
-                      setState(() => isLoading = false);
-                    },
-                    onWebResourceError: (WebResourceError error) {
-                      debugPrint('WebView error: ${error.description}');
-                    },
+                    onProgress: (int p) => setState(() => progress = p),
+                    onPageStarted: (String url) => setState(() => isLoading = true),
+                    onPageFinished: (String url) => setState(() => isLoading = false),
                   ),
                 )
                 ..loadRequest(Uri.parse('${{ github.event.inputs.url }}'));
@@ -161,7 +171,6 @@ jobs:
                 Permission.camera,
                 Permission.microphone,
                 Permission.storage,
-                Permission.location,
               ].request();
             }
 
@@ -172,8 +181,7 @@ jobs:
                   child: Stack(
                     children: [
                       WebViewWidget(controller: controller),
-                      if (isLoading)
-                        LinearProgressIndicator(value: progress / 100),
+                      if (isLoading) LinearProgressIndicator(value: progress / 100),
                     ],
                   ),
                 ),
@@ -182,35 +190,27 @@ jobs:
           }
           EOF
           
-          # Rename app
           sed -i "s/android:label=\".*\"/android:label=\"${{ github.event.inputs.app_name }}\"/" android/app/src/main/AndroidManifest.xml
-          
-          # Tambahin permission INTERNET
           sed -i '/<application/i\    <uses-permission android:name="android.permission.INTERNET"/>' android/app/src/main/AndroidManifest.xml
           
-          # Build APK
           flutter build apk --release
           
-          # Pindahin hasil
           mkdir -p ../output
           cp build/app/outputs/flutter-apk/app-release.apk ../output/${{ github.event.inputs.app_name }}.apk
 
       # ═══════════════════════════════════════════════════
-      # 7. BUILD DARI ZIP PROJECT FLUTTER
+      # 7. BUILD DARI ZIP
       # ═══════════════════════════════════════════════════
       - name: Build from ZIP Project
         if: ${{ github.event.inputs.zip_url != '' }}
         run: |
           echo "🔨 Building from ZIP project..."
           
-          # Download ZIP
           curl -L -o project.zip "${{ github.event.inputs.zip_url }}"
           
-          # Extract
           mkdir -p project
           unzip -o project.zip -d project
           
-          # Cari folder project (kadang nested)
           if [ -f "project/pubspec.yaml" ]; then
             cd project
           elif [ -d "project" ]; then
@@ -219,13 +219,9 @@ jobs:
           
           echo "📂 Working dir: $(pwd)"
           
-          # Install dependency
           flutter pub get
-          
-          # Build APK
           flutter build apk --release
           
-          # Pindahin hasil
           mkdir -p $GITHUB_WORKSPACE/output
           cp build/app/outputs/flutter-apk/app-release.apk "$GITHUB_WORKSPACE/output/${{ github.event.inputs.app_name }}.apk"
 
@@ -233,14 +229,14 @@ jobs:
       # 8. UPLOAD ARTIFACT
       # ═══════════════════════════════════════════════════
       - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ${{ github.event.inputs.app_name }}-apk
           path: output/*.apk
           retention-days: 7
 
       # ═══════════════════════════════════════════════════
-      # 9. UPLOAD APK KE TRANSFER.SH / CATBOX
+      # 9. UPLOAD KE CATBOX
       # ═══════════════════════════════════════════════════
       - name: Upload APK to Catbox
         id: upload
@@ -254,7 +250,7 @@ jobs:
           echo "✅ Uploaded: $APK_URL"
 
       # ═══════════════════════════════════════════════════
-      # 10. NOTIF TELEGRAM — BUILD SUCCESS
+      # 10. NOTIF TELEGRAM — SUCCESS
       # ═══════════════════════════════════════════════════
       - name: Notify Telegram (Success)
         if: ${{ github.event.inputs.user_id != '' && success() }}
@@ -265,10 +261,10 @@ jobs:
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
             -d "chat_id=${{ github.event.inputs.user_id }}" \
             -d "text=✅ *Build Berhasil!*%0A%0A📱 App: ${{ github.event.inputs.app_name }}%0A📦 Size: $APK_SIZE%0A%0A📥 [Download APK]($APK_URL)" \
-            -d "parse_mode=Markdown"
+            -d "parse_mode=Markdown" || true
 
       # ═══════════════════════════════════════════════════
-      # 11. NOTIF TELEGRAM — BUILD FAILED
+      # 11. NOTIF TELEGRAM — FAILED
       # ═══════════════════════════════════════════════════
       - name: Notify Telegram (Failed)
         if: ${{ github.event.inputs.user_id != '' && failure() }}
@@ -276,4 +272,4 @@ jobs:
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
             -d "chat_id=${{ github.event.inputs.user_id }}" \
             -d "text=❌ *Build Gagal!*%0A%0A📱 App: ${{ github.event.inputs.app_name }}%0A%0ACek log di GitHub Actions." \
-            -d "parse_mode=Markdown"
+            -d "parse_mode=Markdown" || true
